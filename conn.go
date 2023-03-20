@@ -32,10 +32,10 @@ var (
 		[]string{"service", "address"})
 
 	DefaultOptions = Options{
-		ConnectTimeout: 15 * time.Second,
-		RetryConnect:   retry.Must(retry.NewExp(0.2, 200*time.Millisecond, 5*time.Second)),
+		RetryConnect: retry.Must(retry.NewExp(0.2, 1*time.Second, 5*time.Second)),
 		DialOptions: []grpc.DialOption{
 			grpc.WithBlock(),
+			grpc.ConnectionTimeout(30 * time.Second),
 			grpc.WithUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor),
 			grpc.WithStreamInterceptor(grpc_prometheus.StreamClientInterceptor)}}
 
@@ -43,9 +43,8 @@ var (
 )
 
 type Options struct {
-	ConnectTimeout time.Duration
-	RetryConnect   retry.Retryer
-	DialOptions    []grpc.DialOption
+	RetryConnect retry.Retryer
+	DialOptions  []grpc.DialOption
 }
 
 type Conn struct {
@@ -117,12 +116,13 @@ func (c *Conn) GetConnection(ctx context.Context) (*grpc.ClientConn, error) {
 	}
 }
 
-func (c *Conn) loop(appCtx context.Context) {
+func (c *Conn) loop(ctx context.Context) {
 	log := logrus.WithFields(logrus.Fields{
 		"context": "gRPC conn",
 		"name":    c.name,
 		"address": c.address})
 
+	defer log.Trace("shutdown")
 	defer close(c.requests)
 
 	labels := []string{c.name, c.address}
@@ -137,15 +137,13 @@ func (c *Conn) loop(appCtx context.Context) {
 		metric_grpc_conns.WithLabelValues(labels...).Inc()
 		log.Trace("dialing")
 
-		ctx, cancel := context.WithTimeout(appCtx, c.options.ConnectTimeout)
 		conn, err := grpc.DialContext(ctx, c.address, c.options.DialOptions...)
-		cancel()
 		if err != nil {
-			log.WithError(err).Error("failed to dial")
+			log.WithError(err).Error("failed to dial, will retry")
 			metric_grpc_conns_err.WithLabelValues(labels...).Inc()
 
 			select {
-			case <-appCtx.Done():
+			case <-ctx.Done():
 				return
 			case <-time.After(c.options.RetryConnect.Next(attempt)):
 				attempt++
@@ -156,6 +154,8 @@ func (c *Conn) loop(appCtx context.Context) {
 		defer conn.Close()
 		log.Trace("connected")
 		metric_grpc_is_connected.WithLabelValues(labels...).Set(1)
+
+		// serve requests. Once connected
 		for {
 			select {
 			case <-ctx.Done():
