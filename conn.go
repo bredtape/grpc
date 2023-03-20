@@ -153,7 +153,7 @@ func (c *Conn) loop(appCtx context.Context) {
 			}
 		}
 
-		attempt = 0
+		defer conn.Close()
 		log.Trace("connected")
 		metric_grpc_is_connected.WithLabelValues(labels...).Set(1)
 		for {
