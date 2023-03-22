@@ -35,7 +35,6 @@ var (
 		RetryConnect: retry.Must(retry.NewExp(0.2, 1*time.Second, 5*time.Second)),
 		DialOptions: []grpc.DialOption{
 			grpc.WithBlock(),
-			grpc.ConnectionTimeout(30 * time.Second),
 			grpc.WithUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor),
 			grpc.WithStreamInterceptor(grpc_prometheus.StreamClientInterceptor)}}
 
