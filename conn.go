@@ -85,9 +85,9 @@ func New(name, address string, opts ...Options) (*Conn, error) {
 	return c, nil
 }
 
-// start connecting and answer requests
+// start connecting and answer requests (in separate go-routine)
 func (c *Conn) Start(ctx context.Context) {
-	c.once.Do(func() { c.loop(ctx) })
+	c.once.Do(func() { go c.loop(ctx) })
 }
 
 func (c *Conn) GetName() string {
