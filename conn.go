@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 var (
@@ -31,10 +32,20 @@ var (
 		Help: "Total number of attempts to connect to the named service, that resulted in some error"},
 		[]string{"service", "address"})
 
+	backoff = retry.Must(retry.NewExp(0.2, 1*time.Second, 5*time.Second))
+
 	DefaultOptions = Options{
-		RetryConnect: retry.Must(retry.NewExp(0.2, 1*time.Second, 5*time.Second)),
+		RetryConnect: backoff,
 		DialOptions: []grpc.DialOption{
 			grpc.WithBlock(),
+			grpc.WithUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor),
+			grpc.WithStreamInterceptor(grpc_prometheus.StreamClientInterceptor)}}
+
+	DefaultOptionsInsecure = Options{
+		RetryConnect: backoff,
+		DialOptions: []grpc.DialOption{
+			grpc.WithBlock(),
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
 			grpc.WithUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor),
 			grpc.WithStreamInterceptor(grpc_prometheus.StreamClientInterceptor)}}
 
