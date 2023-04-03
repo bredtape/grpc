@@ -41,7 +41,7 @@ var (
 			grpc.WithUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor),
 			grpc.WithStreamInterceptor(grpc_prometheus.StreamClientInterceptor)}}
 
-	DefaultOptionsInsecure = Options{
+	OptionsInsecure = Options{
 		RetryConnect: backoff,
 		DialOptions: []grpc.DialOption{
 			grpc.WithBlock(),
