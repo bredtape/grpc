@@ -56,9 +56,8 @@ func New(name, address string, opts ...Options) (*Conn, error) {
 		return nil, errors.New("specify name")
 	}
 
-	_, _, err := net.SplitHostPort(address)
-	if err != nil {
-		return nil, errors.Wrap(err, "invalid address")
+	if strings.TrimSpace(address) == "" {
+		return nil, errors.New("empty address")
 	}
 
 	if len(opts) > 1 {
