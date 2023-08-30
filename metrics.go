@@ -9,7 +9,7 @@ var (
 	labelKeys                = []string{"service", "address"}
 	metric_grpc_is_connected = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "grpc_is_connected",
-		Help: "Whether the connection to the named service has been etablished"},
+		Help: "Whether the connection to the named service has been etablished _for the first time_"},
 		labelKeys)
 
 	metric_conn_state = promauto.NewGaugeVec(prometheus.GaugeOpts{
