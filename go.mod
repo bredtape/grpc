@@ -1,6 +1,6 @@
 module github.com/bredtape/grpc_conn
 
-go 1.20
+go 1.21
 
 require (
 	github.com/bredtape/retry v0.0.1
