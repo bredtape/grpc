@@ -3,35 +3,18 @@ package grpc_conn
 import (
 	"context"
 	"log/slog"
-	"net"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/bredtape/retry"
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
 var (
-	metric_grpc_is_connected = promauto.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "grpc_is_connected",
-		Help: "Whether the connection to the named service has been etablished"},
-		[]string{"service", "address"})
-
-	metric_grpc_conns = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "grpc_connection_attempts_total",
-		Help: "Total number of attempts to connect to the named service"},
-		[]string{"service", "address"})
-
-	metric_grpc_conns_err = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "grpc_connection_attempts_error",
-		Help: "Total number of attempts to connect to the named service, that resulted in some error"},
-		[]string{"service", "address"})
-
 	backoff = retry.Must(retry.NewExp(0.2, 1*time.Second, 5*time.Second))
 
 	DefaultOptions = Options{
@@ -135,7 +118,7 @@ func (c *Conn) loop(ctx context.Context) {
 	defer log.Debug("shutdown")
 	defer close(c.requests)
 
-	labels := []string{c.name, c.address}
+	labels := c.getMetricLabelValues()
 
 	// init labels
 	metric_grpc_is_connected.WithLabelValues(labels...)
@@ -160,12 +143,13 @@ func (c *Conn) loop(ctx context.Context) {
 				continue
 			}
 		}
-
 		defer conn.Close()
 		log.Debug("connected")
 		metric_grpc_is_connected.WithLabelValues(labels...).Set(1)
 
-		// serve requests. Once connected
+		go c.watchConnectionState(ctx, conn)
+
+		// serve requests until context is done
 		for {
 			select {
 			case <-ctx.Done():
@@ -174,4 +158,20 @@ func (c *Conn) loop(ctx context.Context) {
 			}
 		}
 	}
+}
+
+func (c *Conn) watchConnectionState(ctx context.Context, conn *grpc.ClientConn) {
+	m := metric_conn_state.WithLabelValues(c.getMetricLabelValues()...)
+	state := conn.GetState()
+	m.Set(float64(state))
+
+	// loop until ctx expires
+	for conn.WaitForStateChange(ctx, state) {
+		state = conn.GetState()
+		m.Set(float64(state))
+	}
+}
+
+func (c *Conn) getMetricLabelValues() []string {
+	return []string{c.name, c.address}
 }
