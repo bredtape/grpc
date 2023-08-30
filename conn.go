@@ -2,6 +2,7 @@ package grpc_conn
 
 import (
 	"context"
+	"log/slog"
 	"net"
 	"sync"
 	"time"
@@ -11,7 +12,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -127,12 +127,12 @@ func (c *Conn) GetConnection(ctx context.Context) (*grpc.ClientConn, error) {
 }
 
 func (c *Conn) loop(ctx context.Context) {
-	log := logrus.WithFields(logrus.Fields{
-		"context": "gRPC conn",
-		"name":    c.name,
-		"address": c.address})
+	log := slog.With(
+		"context", "gRPC conn",
+		"name", c.name,
+		"address", c.address)
 
-	defer log.Trace("shutdown")
+	defer log.Debug("shutdown")
 	defer close(c.requests)
 
 	labels := []string{c.name, c.address}
@@ -145,11 +145,11 @@ func (c *Conn) loop(ctx context.Context) {
 	attempt := 0
 	for {
 		metric_grpc_conns.WithLabelValues(labels...).Inc()
-		log.Trace("dialing")
+		log.Debug("dialing")
 
 		conn, err := grpc.DialContext(ctx, c.address, c.options.DialOptions...)
 		if err != nil {
-			log.WithError(err).Error("failed to dial, will retry")
+			log.Error("failed to dial, will retry", "err", err)
 			metric_grpc_conns_err.WithLabelValues(labels...).Inc()
 
 			select {
@@ -162,7 +162,7 @@ func (c *Conn) loop(ctx context.Context) {
 		}
 
 		defer conn.Close()
-		log.Trace("connected")
+		log.Debug("connected")
 		metric_grpc_is_connected.WithLabelValues(labels...).Set(1)
 
 		// serve requests. Once connected
