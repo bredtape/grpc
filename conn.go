@@ -20,14 +20,12 @@ var (
 	DefaultOptions = Options{
 		RetryConnect: backoff,
 		DialOptions: []grpc.DialOption{
-			grpc.WithBlock(),
 			grpc.WithUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor),
 			grpc.WithStreamInterceptor(grpc_prometheus.StreamClientInterceptor)}}
 
 	OptionsInsecure = Options{
 		RetryConnect: backoff,
 		DialOptions: []grpc.DialOption{
-			grpc.WithBlock(),
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 			grpc.WithUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor),
 			grpc.WithStreamInterceptor(grpc_prometheus.StreamClientInterceptor)}}
@@ -120,7 +118,6 @@ func (c *Conn) loop(ctx context.Context) {
 	labels := c.getMetricLabelValues()
 
 	// init labels
-	metric_grpc_is_connected.WithLabelValues(labels...)
 	metric_grpc_conns.WithLabelValues(labels...)
 	metric_grpc_conns_err.WithLabelValues(labels...)
 
@@ -129,7 +126,7 @@ func (c *Conn) loop(ctx context.Context) {
 		metric_grpc_conns.WithLabelValues(labels...).Inc()
 		log.Debug("dialing")
 
-		conn, err := grpc.DialContext(ctx, c.address, c.options.DialOptions...)
+		conn, err := grpc.NewClient(c.address, c.options.DialOptions...)
 		if err != nil {
 			log.Error("failed to dial, will retry", "err", err)
 			metric_grpc_conns_err.WithLabelValues(labels...).Inc()
@@ -143,8 +140,6 @@ func (c *Conn) loop(ctx context.Context) {
 			}
 		}
 		defer conn.Close()
-		log.Debug("connected")
-		metric_grpc_is_connected.WithLabelValues(labels...).Set(1)
 
 		go c.watchConnectionState(ctx, conn)
 
@@ -160,14 +155,21 @@ func (c *Conn) loop(ctx context.Context) {
 }
 
 func (c *Conn) watchConnectionState(ctx context.Context, conn *grpc.ClientConn) {
+	log := slog.With(
+		"context", "gRPC conn",
+		"name", c.name,
+		"address", c.address)
+
 	m := metric_conn_state.WithLabelValues(c.getMetricLabelValues()...)
 	state := conn.GetState()
 	m.Set(float64(state))
+	log.Debug("connection state", "state", state)
 
 	// loop until ctx expires
 	for conn.WaitForStateChange(ctx, state) {
 		state = conn.GetState()
 		m.Set(float64(state))
+		log.Debug("connection state changed", "state", state)
 	}
 }
 
